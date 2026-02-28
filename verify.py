@@ -145,6 +145,66 @@ def check_transcripts(df: pd.DataFrame, transcripts_dir: Path) -> None:
         print(f"  ✗  {issues} transcript(s) have issues.")
 
 
+def check_output_matches_inputs(output_path: Path, inputs_dir: Path) -> None:
+    """Compare `output_golden.csv` to the per-row `inputs/inputN/option_*.txt` files.
+
+    For each `inputN/` we read `option_1.txt..option_5.txt` and check that the
+    corresponding row in the output CSV (matched by `audio_id`) contains the
+    exact same strings. Prints mismatches and a summary count.
+    """
+    print(f"\n{'='*60}")
+    print(f"CHECK 3: output CSV vs inputs/  ({output_path})")
+    print(f"{'='*60}")
+
+    if not output_path.exists():
+        print(f"  [SKIP] Output file not found: {output_path}")
+        return
+
+    out_df = pd.read_csv(output_path, dtype=str).fillna("")
+
+    import re
+    row_dirs = sorted(
+        [d for d in Path(inputs_dir).iterdir() if d.is_dir() and re.fullmatch(r"input\d+", d.name)],
+        key=lambda d: int(re.search(r"\d+", d.name).group()),
+    )
+
+    if not row_dirs:
+        print(f"  [SKIP] No per-row input folders found in: {inputs_dir}")
+        return
+
+    mismatches = 0
+    missing_rows = 0
+    for row_dir in row_dirs:
+        audio_id_file = row_dir / "audio_id.txt"
+        if not audio_id_file.exists():
+            print(f"  [MISSING] {row_dir.name}/audio_id.txt")
+            continue
+        audio_id = audio_id_file.read_text(encoding="utf-8").strip()
+
+        match = out_df[out_df["audio_id"].astype(str) == str(audio_id)]
+        if match.empty:
+            print(f"  [MISSING ROW] No row with audio_id={audio_id} in {output_path.name}")
+            missing_rows += 1
+            continue
+
+        out_row = match.iloc[0]
+        for k in range(1, 6):
+            fname = row_dir / f"option_{k}.txt"
+            file_val = fname.read_text(encoding="utf-8").strip() if fname.exists() else ""
+            out_val = str(out_row.get(f"option_{k}", "")).strip()
+            if file_val != out_val:
+                print(f"  [MISMATCH] {row_dir.name}/option_{k}.txt  (audio_id={audio_id})")
+                print(f"             file : {repr(file_val[:120])}")
+                print(f"             output: {repr(out_val[:120])}")
+                mismatches += 1
+
+    if missing_rows == 0 and mismatches == 0:
+        print(f"  ✓  All {len(row_dirs)} input folders match the output CSV options exactly.")
+    else:
+        print()
+        print(f"  ✗  {missing_rows} missing output row(s), {mismatches} mismatched option(s) found.")
+
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -152,6 +212,10 @@ def main():
     parser.add_argument("--file",            default="dataset_download.xlsx")
     parser.add_argument("--inputs-dir",      default="inputs")
     parser.add_argument("--transcripts-dir", default="transcripts")
+    parser.add_argument("--output",         default=str(Path("output") / "output_golden.csv"),
+                        help="Path to pipeline output CSV to verify against inputs")
+    parser.add_argument("--only-output",    action="store_true",
+                        help="Run only the output-vs-inputs check (skip transcripts)")
     args = parser.parse_args()
 
     dataset_path = Path(args.file)
@@ -160,7 +224,14 @@ def main():
     print(f"Loaded: {len(df)} rows from {dataset_path}")
 
     check_inputs(df, Path(args.inputs_dir))
+    if args.only_output:
+        # Skip transcript checking and run only output comparison
+        check_output_matches_inputs(Path(args.output), Path(args.inputs_dir))
+        return
+
     check_transcripts(df, Path(args.transcripts_dir))
+    # Check that output CSV options were copied from per-row input files
+    check_output_matches_inputs(Path(args.output), Path(args.inputs_dir))
 
 
 if __name__ == "__main__":
