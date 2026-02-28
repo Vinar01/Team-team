@@ -97,7 +97,8 @@ def split_inputs(dataset_path: Path, out_dir: Path) -> None:
             print(f"  [SKIP] Column '{col}' not found — skipping {filename}")
             continue
         out_path = out_dir / filename
-        lines = df[col].fillna("").astype(str).tolist()
+        # Replace internal newlines with a space so each value stays on one line
+        lines = df[col].fillna("").astype(str).str.replace(r"\n", " ", regex=True).tolist()
         out_path.write_text("\n".join(lines), encoding="utf-8")
         print(f"  Written: {out_path.name}  ({len(lines)} lines)")
 

@@ -65,14 +65,36 @@ OUTPUT_COLS = [
     "is_correct",
     "wer_option1", "wer_option2", "wer_option3", "wer_option4", "wer_option5",
 ]
-AUDIO_DIR   = Path("temp_audio")
-OUTPUT_FILE = Path("output_golden.csv")
-MAX_SAMPLES = 10  # process all rows
+AUDIO_DIR       = Path("temp_audio")
+OUTPUT_FILE     = Path("output") / "output_golden.csv"
+OUTPUT_DIR      = Path("output")
+TRANSCRIPTS_DIR = Path("transcripts")
+MAX_SAMPLES     = 10  # process all rows
+
+SUMMARY_COLS = [
+    "audio_id", "language", "correct_option", "golden_ref", "is_correct",
+    "wer_option1", "wer_option2", "wer_option3", "wer_option4", "wer_option5",
+]
 
 
 # ---------------------------------------------------------------------------
 # Text normalizer (from text.py)
 # ---------------------------------------------------------------------------
+
+def _clean_arabic(text: str) -> str:
+    """Remove non-Arabic/non-space characters hallucinated by Whisper.
+
+    Keeps: Arabic script (U+0600–U+06FF), common Arabic punctuation,
+    spaces, newlines, and ASCII digits/punctuation.
+    """
+    import re
+    # Allow Arabic block, Arabic Presentation Forms, spaces, digits, basic punctuation
+    cleaned = re.sub(r"[^\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF"
+                     r"\s\d.,،؛؟!؟:\-\"'()[\]{}]", "", text)
+    # Collapse multiple spaces
+    cleaned = re.sub(r"  +", " ", cleaned).strip()
+    return cleaned
+
 
 def _normalize(text: str, lang: str) -> str:
     """Normalize text using the project's text.py pipeline."""
@@ -140,6 +162,7 @@ class AcousticAligner:
         """
         whisper_lang = _lang_for_whisper(lang)
         norm_lang    = _lang_base(lang)
+        raw_hypothesis = ""
 
         # ── Step 1: Load audio (ffmpeg → soundfile/torchaudio fallback) ────
         audio_input: str | Path | np.ndarray = audio_path
@@ -166,8 +189,8 @@ class AcousticAligner:
                 audio_input = data
             except Exception as load_exc:
                 logger.error("Could not load audio %s: %s", audio_path, load_exc)
-                return [{"text": c, "option_num": i + 1, "score": float("inf")}
-                        for i, c in enumerate(candidates)]
+                return ([{"text": c, "option_num": i + 1, "score": float("inf")}
+                         for i, c in enumerate(candidates)], "")
 
         # ── Step 2: Transcribe ──────────────────────────────────────────────
         try:
@@ -176,12 +199,19 @@ class AcousticAligner:
                 language=whisper_lang,
                 task="transcribe",
                 fp16=(self.device == "cuda"),
+                condition_on_previous_text=False,   # reduces hallucination loops
+                no_speech_threshold=0.6,            # skip near-silent segments
+                logprob_threshold=-1.0,             # discard very uncertain tokens
+                compression_ratio_threshold=2.4,    # drop repetition-heavy outputs
             )
             raw_hypothesis = result["text"].strip()
+            # Strip hallucinated non-Arabic characters for Arabic audio
+            if norm_lang == "ar":
+                raw_hypothesis = _clean_arabic(raw_hypothesis)
         except Exception as exc:
             logger.error("Transcription failed: %s", exc)
-            return [{"text": c, "option_num": i + 1, "score": float("inf")}
-                    for i, c in enumerate(candidates)]
+            return ([{"text": c, "option_num": i + 1, "score": float("inf")}
+                     for i, c in enumerate(candidates)], "")
 
         # ── Step 3: Normalize hypothesis ────────────────────────────────────
         norm_hypothesis = _normalize(raw_hypothesis, norm_lang)
@@ -204,7 +234,7 @@ class AcousticAligner:
 
         # ── Step 5: Sort ascending (lowest WER = best) ──────────────────────
         scored.sort(key=lambda x: x["score"])
-        return scored
+        return scored, raw_hypothesis
 
 
 # ---------------------------------------------------------------------------
@@ -411,13 +441,15 @@ def compute_wer(reference: str, hypothesis: str, lang: str) -> float:
 # Main pipeline
 # ---------------------------------------------------------------------------
 
-def run_pipeline(df: pd.DataFrame, model_name: str = "base") -> pd.DataFrame:
+def run_pipeline(df: pd.DataFrame, model_name: str = "base",
+                 transcripts_dir: Path = TRANSCRIPTS_DIR) -> pd.DataFrame:
     # ── Limit to first MAX_SAMPLES rows ─────────────────────────────────────
     df = df.head(MAX_SAMPLES).copy()
     logger.info("Processing first %d samples.", len(df))
 
     aligner = AcousticAligner(model_name=model_name)
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    transcripts_dir.mkdir(parents=True, exist_ok=True)
 
     output_rows: list[dict] = []
 
@@ -444,10 +476,15 @@ def run_pipeline(df: pd.DataFrame, model_name: str = "base") -> pd.DataFrame:
                 golden_option_num = 1
                 wers = [float("nan")] * 5
             else:
-                scored = aligner.score_candidates(audio_path, candidates, lang=lang)
+                scored, raw_hypothesis = aligner.score_candidates(audio_path, candidates, lang=lang)
                 best   = scored[0]
                 golden_option_num = best["option_num"]   # integer 1-5
                 logger.info("  Golden: option_%d  (WER=%.4f)", golden_option_num, best["score"])
+
+                # Save Whisper transcript to transcripts/<audio_id>.txt
+                transcript_file = transcripts_dir / f"{audio_id}.txt"
+                transcript_file.write_text(raw_hypothesis, encoding="utf-8")
+                logger.info("  Transcript saved -> %s", transcript_file)
 
                 # WER of each option vs the golden candidate text (both normalised)
                 golden_text = candidates[golden_option_num - 1]
@@ -482,6 +519,12 @@ def run_pipeline(df: pd.DataFrame, model_name: str = "base") -> pd.DataFrame:
     out_df = pd.DataFrame(output_rows, columns=OUTPUT_COLS)
     logger.info("Pipeline complete. %d rows processed.", len(out_df))
 
+    # Save summary JSON to output/
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    summary_path = OUTPUT_DIR / "results.json"
+    out_df[SUMMARY_COLS].to_json(summary_path, orient="records", indent=2, force_ascii=False)
+    logger.info("Summary JSON saved -> %s", summary_path.resolve())
+
     # Accuracy summary
     scored_mask = out_df["is_correct"].notna()
     if scored_mask.any():
@@ -498,20 +541,24 @@ def run_pipeline(df: pd.DataFrame, model_name: str = "base") -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def main():
-    global AUDIO_DIR
+    global AUDIO_DIR, TRANSCRIPTS_DIR
     parser = argparse.ArgumentParser(description="Golden Transcription Selection Pipeline")
     src = parser.add_mutually_exclusive_group(required=True)
     src.add_argument("--url",        help="SharePoint public sharing URL for the dataset")
     src.add_argument("--file",       help="Local path to the dataset (Excel or CSV)")
     src.add_argument("--inputs-dir", help="Folder containing per-column .txt input files",
                      metavar="DIR")
-    parser.add_argument("--model",     default="base",
+    parser.add_argument("--model",           default="base",
                         choices=["tiny", "base", "small", "medium", "large"])
-    parser.add_argument("--output",    default=str(OUTPUT_FILE))
-    parser.add_argument("--audio-dir", default=str(AUDIO_DIR))
+    # default is already "base" — no need to pass --model
+    parser.add_argument("--output",          default=str(OUTPUT_FILE))
+    parser.add_argument("--audio-dir",       default=str(AUDIO_DIR))
+    parser.add_argument("--transcripts-dir", default=str(TRANSCRIPTS_DIR),
+                        help="Folder to save per-input Whisper transcripts (default: transcripts/)")
     args = parser.parse_args()
 
-    AUDIO_DIR = Path(args.audio_dir)
+    AUDIO_DIR       = Path(args.audio_dir)
+    TRANSCRIPTS_DIR = Path(args.transcripts_dir)
 
     if args.url:
         local_dataset = Path("dataset_download.xlsx")
@@ -522,7 +569,7 @@ def main():
     else:
         df = load_dataset(Path(args.file))
 
-    out_df = run_pipeline(df, model_name=args.model)
+    out_df = run_pipeline(df, model_name=args.model, transcripts_dir=TRANSCRIPTS_DIR)
 
     out_path = Path(args.output)
     out_df.to_csv(out_path, index=False, encoding="utf-8-sig")
@@ -530,7 +577,7 @@ def main():
 
     print("\n── Output preview (first 5 rows) ──")
     print(out_df[["audio_id", "language", "correct_option", "golden_ref", "is_correct",
-                  "wer_option1", "wer_option2"]].head(5).to_string(index=False))
+                  "wer_option1", "wer_option2", "wer_option3", "wer_option4", "wer_option5"]].head(5).to_string(index=False))
 
     # Final accuracy
     scored_mask = out_df["is_correct"].notna()
