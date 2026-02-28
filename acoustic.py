@@ -66,8 +66,9 @@ OUTPUT_COLS = [
     "wer_option1", "wer_option2", "wer_option3", "wer_option4", "wer_option5",
 ]
 AUDIO_DIR       = Path("temp_audio")
-OUTPUT_FILE     = Path("output") / "output_golden.csv"
 OUTPUT_DIR      = Path("output")
+OUTPUT_FILE     = OUTPUT_DIR / "output_golden.csv"
+MY_RESULTS_FILE = OUTPUT_DIR / "my_results.csv"  # additional save path
 TRANSCRIPTS_DIR = Path("transcripts")
 MAX_SAMPLES     = 10  # process all rows
 
@@ -574,6 +575,10 @@ def main():
     out_path = Path(args.output)
     out_df.to_csv(out_path, index=False, encoding="utf-8-sig")
     logger.info("Output saved -> %s", out_path.resolve())
+    # also write a duplicate copy as my_results.csv in output folder
+    other_path = OUTPUT_DIR / "my_results.csv"
+    out_df.to_csv(other_path, index=False, encoding="utf-8-sig")
+    logger.info("Also saved duplicate results -> %s", other_path.resolve())
 
     print("\n── Output preview (first 5 rows) ──")
     print(out_df[["audio_id", "language", "correct_option", "golden_ref", "is_correct",

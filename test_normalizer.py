@@ -8,9 +8,9 @@ class TestTextNormalizer(unittest.TestCase):
     # English
     # --------------------------
     def test_english_basic(self):
-        text = "I can't buy 15 apples!!!"
+        text = "I shan't buy 15 apples!!! \t "
         result = normalize(text, "en")
-        self.assertEqual(result, "i cannot buy fifteen apples")
+        self.assertEqual(result, "i shall not buy fifteen apples")
 
     def test_english_large_number(self):
         text = "The year is 2024."

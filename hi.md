@@ -40,3 +40,5 @@ Contractions contain punctuation (don't, I'm)
 Numbers may contain commas/periods (1,000, 3.14)
 
 Removing punctuation too early breaks logic
+
+no access to authirized work/school account, so couldn't do automated download
