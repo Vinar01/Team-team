@@ -1,13 +1,6 @@
-import re
 import regex
 import unicodedata
 from num2words import num2words
-
-# Optional (for Chinese segmentation)
-try:
-    import jieba
-except ImportError:
-    jieba = None
 
 
 # ------------------------------
@@ -18,21 +11,18 @@ def unicode_standardize(text: str) -> str:
 
 
 # ------------------------------
-# 2️⃣ Language-Aware Lowercasing
+# 2️⃣ Lowercasing
 # ------------------------------
-def lowercase(text: str, lang: str) -> str:
-    # Turkish special casing
-    if lang.startswith("tr"):
-        text = text.replace("İ", "i").replace("I", "ı")
+def lowercase(text: str) -> str:
     return text.lower()
 
 
 # ------------------------------
-# 3️⃣ Remove Arabic Diacritics
+# 3️⃣ Remove Diacritics (All Languages)
 # ------------------------------
-def remove_arabic_diacritics(text: str) -> str:
-    arabic_diacritics = regex.compile(r'[\u0617-\u061A\u064B-\u0652]')
-    return arabic_diacritics.sub('', text)
+def remove_diacritics(text: str) -> str:
+    # Remove all combining marks (category M)
+    return regex.sub(r"\p{M}+", "", text)
 
 
 # ------------------------------
@@ -46,55 +36,65 @@ def normalize_numbers(text: str, lang: str) -> str:
         except:
             return number
 
-    return re.sub(r'\b\d+\b', replace_number, text)
+    return regex.sub(r"\b\d+\b", replace_number, text)
 
 
 # ------------------------------
-# 5️⃣ Remove Non-Meaningful Punctuation
+# 5️⃣ Remove Punctuation (Unicode Safe)
 # ------------------------------
 def remove_punctuation(text: str) -> str:
-    # Keep letters, numbers, whitespace, apostrophes
-    return regex.sub(r"[^\p{L}\p{N}\s']", "", text)
+    # Remove all Unicode punctuation characters
+    return regex.sub(r"\p{P}+", "", text)
 
 
 # ------------------------------
-# 6️⃣ Chinese Word Segmentation (Optional)
-# ------------------------------
-def segment_chinese(text: str) -> str:
-    if jieba is None:
-        return text
-    return " ".join(jieba.cut(text))
-
-
-# ------------------------------
-# 7️⃣ Normalize Whitespace
+# 6️⃣ Normalize Whitespace
 # ------------------------------
 def normalize_whitespace(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
+    return regex.sub(r"\s+", " ", text).strip()
 
 
 # ------------------------------
-# 🔥 Main Normalization Function
+# 🔥 Main Function
 # ------------------------------
 def normalize(text: str, lang: str = "en") -> str:
     text = unicode_standardize(text)
-    text = lowercase(text, lang)
-
+    text = lowercase(text)
     if lang.startswith("ar"):
-        text = remove_arabic_diacritics(text)
-
+        text = regex.sub(r"\p{M}+", "", text)
     text = normalize_numbers(text, lang)
     text = remove_punctuation(text)
-
-    if lang.startswith("zh"):
-        text = segment_chinese(text)
-
     text = normalize_whitespace(text)
-
     return text
 
+
+# ------------------------------
+# 🧪 Test
+# ------------------------------
+import json
+
+# ------------------------------
+# 🧪 Test + Save to JSON
+# ------------------------------
 if __name__ == "__main__":
-    print(normalize("The meeting starts at 5.", lang="en"))
-    print(normalize("La reunión empieza a las 5.", lang="es"))
-    print(normalize("الاجتماع يبدأ الساعة 5", lang="ar"))
-    print(normalize("会议在5点开始", lang="zh"))
+    samples = {
+        "en": "The meeting starts at 5.",
+        "es": "La reunión empieza a las 5.",
+        "ar": "الاجتماع يبدأ الساعة 5",
+        "zh": "会议在5点开始",
+        "hi": "नमस्कार, चलिए 5 बजे मिलते हैं।"
+    }
+
+    results = {}
+
+    for lang, text in samples.items():
+        results[lang] = {
+            "original": text,
+            "normalized": normalize(text, lang)
+        }
+
+    # Save to JSON file
+    with open("normalized_output.json", "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=4)
+
+    print("Results saved to normalized_output.json")
