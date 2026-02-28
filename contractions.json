@@ -1,0 +1,64 @@
+{
+  "en": {
+    "i'm": "i am", "i've": "i have", "i'll": "i will", "i'd": "i would",
+    "you're": "you are", "you've": "you have", "you'll": "you will", "you'd": "you would",
+    "he's": "he is", "he'll": "he will", "he'd": "he would",
+    "she's": "she is", "she'll": "she will", "she'd": "she would",
+    "it's": "it is", "it'll": "it will",
+    "we're": "we are", "we've": "we have", "we'll": "we will", "we'd": "we would",
+    "they're": "they are", "they've": "they have", "they'll": "they will", "they'd": "they would",
+    "that's": "that is", "that'll": "that will", "that'd": "that would",
+    "who's": "who is", "who'll": "who will", "who'd": "who would",
+    "what's": "what is", "what'll": "what will", "what'd": "what did",
+    "where's": "where is", "where'd": "where did",
+    "when's": "when is", "when'd": "when did",
+    "why's": "why is", "why'd": "why did",
+    "how's": "how is", "how'd": "how did", "how'll": "how will",
+    "isn't": "is not", "aren't": "are not", "wasn't": "was not", "weren't": "were not",
+    "haven't": "have not", "hasn't": "has not", "hadn't": "had not",
+    "won't": "will not", "wouldn't": "would not",
+    "don't": "do not", "doesn't": "does not", "didn't": "did not",
+    "can't": "cannot", "couldn't": "could not",
+    "shouldn't": "should not", "mightn't": "might not", "mustn't": "must not",
+    "let's": "let us", "there's": "there is", "there're": "there are",
+    "here's": "here is", "could've": "could have", "should've": "should have",
+    "would've": "would have", "might've": "might have", "must've": "must have",
+    "ain't": "is not", "gonna": "going to", "wanna": "want to", "gotta": "got to"
+  },
+  "fr": {
+    "j'ai": "je ai", "j'avais": "je avais", "j'aurai": "je aurai",
+    "j'aurais": "je aurais", "j'etais": "je etais", "j'irai": "je irai",
+    "j'irais": "je irais", "j'y": "je y", "j'en": "je en",
+    "c'est": "ce est", "c'etait": "ce etait",
+    "n'est": "ne est", "n'etait": "ne etait", "n'a": "ne a",
+    "n'ont": "ne ont", "n'avait": "ne avait", "n'avaient": "ne avaient",
+    "qu'il": "que il", "qu'elle": "que elle", "qu'ils": "que ils",
+    "qu'elles": "que elles", "qu'on": "que on", "qu'un": "que un",
+    "qu'une": "que une", "qu'en": "que en",
+    "l'ai": "le ai", "l'a": "le a", "l'on": "le on",
+    "d'un": "de un", "d'une": "de une", "d'abord": "de abord",
+    "d'accord": "de accord",
+    "m'a": "me a", "m'ont": "me ont",
+    "s'est": "se est", "s'il": "se il", "s'ils": "se ils"
+  },
+  "es": {
+    "al": "a el",
+    "del": "de el"
+  },
+  "it": {
+    "c'e": "ci e", "c'era": "ci era",
+    "dov'e": "dove e", "com'e": "come e",
+    "anch'io": "anche io", "tutt'altro": "tutto altro"
+  },
+  "pt": {
+    "ao": "a o", "aos": "a os", "da": "de a", "das": "de as",
+    "do": "de o", "dos": "de os", "na": "em a", "nas": "em as",
+    "no": "em o", "nos": "em os", "num": "em um", "numa": "em uma",
+    "pelo": "por o", "pelos": "por os", "pela": "por a", "pelas": "por as"
+  },
+  "de": {
+    "im": "in dem", "ins": "in das", "am": "an dem", "ans": "an das",
+    "zum": "zu dem", "zur": "zu der", "vom": "von dem", "beim": "bei dem",
+    "aufs": "auf das", "furs": "fur das", "ums": "um das"
+  }
+}

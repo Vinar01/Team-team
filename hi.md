@@ -3,13 +3,16 @@ spacing, filler words, punctuations, number to word, contractions,
 word + character error rate
 
 
+
+//khushi
 whisper
     remove spacing, remove punctuation, change num to wrod, change contraction.
 
+//vises
 grammar
    remove filler
 
-weights (linguistic / acoustic / length)
+weights (linguistic / acoustic / length(pujit))
     tukka (mostly)
     nn (unlikely)
 
