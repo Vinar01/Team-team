@@ -92,3 +92,9 @@ def normalize(text: str, lang: str = "en") -> str:
     text = normalize_whitespace(text)
 
     return text
+
+if __name__ == "__main__":
+    print(normalize("The meeting starts at 5.", lang="en"))
+    print(normalize("La reunión empieza a las 5.", lang="es"))
+    print(normalize("الاجتماع يبدأ الساعة 5", lang="ar"))
+    print(normalize("会议在5点开始", lang="zh"))
