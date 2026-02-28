@@ -1,14 +1,14 @@
 {
     "en": {
         "original": "The meeting starts at 5.",
-        "normalized": "the meeting starts at five"
+        "normalized": "the meeting starts at five"  
     },
     "es": {
         "original": "La reunión empieza a las 5.",
         "normalized": "la reunión empieza a las cinco"
     },
     "ar": {
-        "original": "الاجتماع يبدأ الساعة 5",
+        "original": "الاجتماع يبدأ الساعة 5   ",
         "normalized": "الاجتماع يبدأ الساعة خمسة"
     },
     "zh": {
