@@ -78,6 +78,17 @@ def split_inputs(dataset_path: Path, out_dir: Path) -> None:
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Columns that should be written as plain integers (strip ".0" float suffix)
+    INT_COLS = {"audio_id", "correct_option"}
+
+    def _cell_value(val, col: str) -> str:
+        if col in INT_COLS:
+            try:
+                return str(int(float(str(val))))
+            except (ValueError, TypeError):
+                pass
+        return str(val) if val is not None else ""
+
     # ── Per-row folders ──────────────────────────────────────────────────────
     print("Creating per-row folders...")
     for i, (_, row) in enumerate(df.iterrows(), start=1):
@@ -85,7 +96,7 @@ def split_inputs(dataset_path: Path, out_dir: Path) -> None:
         row_dir.mkdir(parents=True, exist_ok=True)
 
         for filename, col in COLUMN_MAP.items():
-            value = str(row[col]) if col in df.columns else ""
+            value = _cell_value(row[col], col) if col in df.columns else ""
             (row_dir / filename).write_text(value, encoding="utf-8")
 
         print(f"  {row_dir.name}/  ({len(COLUMN_MAP)} files)")
@@ -98,7 +109,11 @@ def split_inputs(dataset_path: Path, out_dir: Path) -> None:
             continue
         out_path = out_dir / filename
         # Replace internal newlines with a space so each value stays on one line
-        lines = df[col].fillna("").astype(str).str.replace(r"\n", " ", regex=True).tolist()
+        series = df[col].fillna("")
+        if col in INT_COLS:
+            lines = [str(int(float(v))) if str(v).strip() else "" for v in series]
+        else:
+            lines = series.astype(str).str.replace(r"\n", " ", regex=True).tolist()
         out_path.write_text("\n".join(lines), encoding="utf-8")
         print(f"  Written: {out_path.name}  ({len(lines)} lines)")
 

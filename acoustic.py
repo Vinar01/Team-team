@@ -11,14 +11,15 @@ Steps:
     2. For each row, locate/download its audio file
     3. Whisper transcribes the audio → model_hypothesis
     4. Normalize model_hypothesis + all 5 candidates via text.py
-    5. Pick candidate with lowest WER vs normalised hypothesis → golden_ref
-    6. Record golden option NUMBER (1-5) and WER scores
-    7. Write output CSV
+    5. Apply softmax to WER scores → score per candidate (higher = better, 1.0 = perfect)
+    6. Pick candidate with highest softmax score → golden_ref
+    7. Record golden option NUMBER (1-5) and softmax scores
+    8. Write output CSV
 
 Output columns:
     audio_id, language, audio, option_1..5,
     golden_ref (option number 1-5),
-    wer_option1..5
+    score_option1..5  (softmax, 0–1, higher = better match)
 """
 
 from __future__ import annotations
@@ -63,7 +64,7 @@ OUTPUT_COLS = [
     "correct_option",
     "golden_ref",
     "is_correct",
-    "wer_option1", "wer_option2", "wer_option3", "wer_option4", "wer_option5",
+    "score_option1", "score_option2", "score_option3", "score_option4", "score_option5",
 ]
 AUDIO_DIR       = Path("temp_audio")
 OUTPUT_DIR      = Path("output")
@@ -74,7 +75,7 @@ MAX_SAMPLES     = 10  # process all rows
 
 SUMMARY_COLS = [
     "audio_id", "language", "correct_option", "golden_ref", "is_correct",
-    "wer_option1", "wer_option2", "wer_option3", "wer_option4", "wer_option5",
+    "score_option1", "score_option2", "score_option3", "score_option4", "score_option5",
 ]
 
 
@@ -83,18 +84,80 @@ SUMMARY_COLS = [
 # ---------------------------------------------------------------------------
 
 def _clean_arabic(text: str) -> str:
-    """Remove non-Arabic/non-space characters hallucinated by Whisper.
-
-    Keeps: Arabic script (U+0600–U+06FF), common Arabic punctuation,
-    spaces, newlines, and ASCII digits/punctuation.
-    """
+    """Keep only Arabic script + shared chars; strip cross-script hallucinations."""
     import re
-    # Allow Arabic block, Arabic Presentation Forms, spaces, digits, basic punctuation
     cleaned = re.sub(r"[^\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF"
                      r"\s\d.,،؛؟!؟:\-\"'()[\]{}]", "", text)
-    # Collapse multiple spaces
-    cleaned = re.sub(r"  +", " ", cleaned).strip()
-    return cleaned
+    return re.sub(r"  +", " ", cleaned).strip()
+
+
+def _clean_latin(text: str) -> str:
+    """Keep Basic-Latin + Latin-Extended scripts; strip CJK/Arabic/Hangul hallucinations."""
+    import re
+    cleaned = re.sub(r"[^\u0000-\u024F\u1E00-\u1EFF\s\d.,!?;:\-\"'()[\]{}]", "", text)
+    return re.sub(r"  +", " ", cleaned).strip()
+
+
+def _clean_hindi(text: str) -> str:
+    """Keep Devanagari script + shared chars; strip Latin/CJK/Arabic hallucinations."""
+    import re
+    cleaned = re.sub(r"[^\u0900-\u097F\s\d.,!?;:\-\"'()[\]{}]", "", text)
+    return re.sub(r"  +", " ", cleaned).strip()
+
+
+def _clean_chinese(text: str) -> str:
+    """Keep CJK Unified Ideographs + CJK punctuation; strip Arabic/Hangul hallucinations."""
+    import re
+    cleaned = re.sub(
+        r"[^\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF"
+        r"\u3000-\u303F\uFF00-\uFFEF\s\d.,!?\uff1b\uff1a\u3001\u300c\u300d\u3010\u3011()[\]{}]",
+        "", text,
+    )
+    return re.sub(r"  +", " ", cleaned).strip()
+
+
+def _clean_generic(text: str) -> str:
+    """Fallback cleaner: removes Whisper looping repetitions and collapses spaces.
+
+    Does NOT strip any script characters — safe for any language not in the registry.
+    """
+    import re
+    # Remove 3+ repetitions of the same 8-50 char phrase (Whisper looping hallucination)
+    text = re.sub(r"(.{8,50}?)\1{3,}", r"\1", text)
+    return re.sub(r"  +", " ", text).strip()
+
+
+# Registry: ISO 639-1 code → script-specific cleaner.
+# Languages absent from this dict fall back to _clean_generic (loop/space fix only).
+_LANG_CLEANERS: dict = {
+    "ar": _clean_arabic,
+    # Latin-script languages
+    "en": _clean_latin, "fr": _clean_latin, "de": _clean_latin,
+    "es": _clean_latin, "it": _clean_latin, "pt": _clean_latin,
+    "nl": _clean_latin, "pl": _clean_latin, "sv": _clean_latin,
+    "tr": _clean_latin, "vi": _clean_latin, "id": _clean_latin,
+    "ro": _clean_latin, "cs": _clean_latin, "fi": _clean_latin,
+    "hu": _clean_latin, "da": _clean_latin, "no": _clean_latin,
+    # Devanagari
+    "hi": _clean_hindi, "mr": _clean_hindi, "ne": _clean_hindi,
+    # CJK
+    "zh": _clean_chinese,
+}
+
+
+def _clean_transcript(text: str, lang: str) -> str:
+    """Apply the registered script cleaner for *lang*, then normalize.
+
+    Two-step preparation for the Whisper hypothesis:
+      1. Script cleaner  — strips cross-language hallucinations (or generic
+         loop/space fix for languages not in the registry).
+      2. _normalize      — diacritics, casing, number-word expansion, etc.
+
+    Returns fully cleaned *and* normalized text ready for WER comparison.
+    """
+    cleaner = _LANG_CLEANERS.get(lang, _clean_generic)
+    cleaned = cleaner(text)
+    return _normalize(cleaned, lang)
 
 
 def _normalize(text: str, lang: str) -> str:
@@ -158,8 +221,8 @@ class AcousticAligner:
         lang: str = "en",
     ) -> list[dict]:
         """
-        Returns list of dicts sorted by score ascending (lower WER = better):
-            {text, option_num (1-5), score (WER)}
+        Returns list of dicts sorted by score descending (higher softmax score = better):
+            {text, option_num (1-5), score (softmax probability, 1.0 = perfect match)}
         """
         whisper_lang = _lang_for_whisper(lang)
         norm_lang    = _lang_base(lang)
@@ -206,35 +269,38 @@ class AcousticAligner:
                 compression_ratio_threshold=2.4,    # drop repetition-heavy outputs
             )
             raw_hypothesis = result["text"].strip()
-            # Strip hallucinated non-Arabic characters for Arabic audio
-            if norm_lang == "ar":
-                raw_hypothesis = _clean_arabic(raw_hypothesis)
+            # Clean cross-script hallucinations + normalize in one step
+            norm_hypothesis = _clean_transcript(raw_hypothesis, norm_lang)
         except Exception as exc:
             logger.error("Transcription failed: %s", exc)
             return ([{"text": c, "option_num": i + 1, "score": float("inf")}
                      for i, c in enumerate(candidates)], "")
 
-        # ── Step 3: Normalize hypothesis ────────────────────────────────────
-        norm_hypothesis = _normalize(raw_hypothesis, norm_lang)
         logger.debug("Hypothesis (raw):  %s", raw_hypothesis[:120])
         logger.debug("Hypothesis (norm): %s", norm_hypothesis[:120])
 
-        # ── Step 4: Normalize each candidate and compute WER ────────────────
+        # ── Step 3: Normalize each candidate and compute WER ────────────────
         scored: list[dict] = []
         for i, cand in enumerate(candidates):
             option_num = i + 1
             if not cand or not cand.strip():
                 score = float("inf")
             else:
-                norm_cand = _normalize(cand, norm_lang)
+                norm_cand = _normalize(cand, norm_lang)  # candidates: normalize only (no hallucination cleaning)
                 try:
                     score = jiwer_wer(norm_hypothesis, norm_cand)
                 except Exception:
                     score = float("inf")
             scored.append({"text": cand, "option_num": option_num, "score": score})
 
-        # ── Step 5: Sort ascending (lowest WER = best) ──────────────────────
-        scored.sort(key=lambda x: x["score"])
+        # ── Step 4: Convert raw WER → softmax score (higher = better) ───────
+        raw_wers = [s["score"] for s in scored]
+        softmax_scores = _softmax_wer(raw_wers)
+        for entry, sm in zip(scored, softmax_scores):
+            entry["score"] = sm
+
+        # ── Step 5: Sort descending (highest softmax = best match) ──────────
+        scored.sort(key=lambda x: x["score"], reverse=True)
         return scored, raw_hypothesis
 
 
@@ -438,6 +504,27 @@ def compute_wer(reference: str, hypothesis: str, lang: str) -> float:
         return float("nan")
 
 
+def _softmax_wer(wers: list[float]) -> list[float]:
+    """Convert raw WER values to softmax scores where higher = better.
+
+    WER = 0.0 maps to the highest score (approaching 1.0 as others diverge).
+    Steps:
+      1. Clamp inf/nan to max_finite + 10 so all values are finite.
+      2. Negate the clamped WERs (lower WER → higher logit).
+      3. Apply numerically-stable softmax (log-sum-exp shift).
+    Returns one probability per option; scores sum to 1.0.
+    """
+    import math
+    finite = [w for w in wers if math.isfinite(w)]
+    cap = (max(finite) + 10.0) if finite else 10.0
+    clamped = [w if math.isfinite(w) else cap for w in wers]
+    neg = [-w for w in clamped]
+    shift = max(neg)   # numerical stability (log-sum-exp trick)
+    exps = [math.exp(v - shift) for v in neg]
+    total = sum(exps)
+    return [round(e / total, 6) for e in exps]
+
+
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
@@ -480,16 +567,17 @@ def run_pipeline(df: pd.DataFrame, model_name: str = "base",
                 scored, raw_hypothesis = aligner.score_candidates(audio_path, candidates, lang=lang)
                 best   = scored[0]
                 golden_option_num = best["option_num"]   # integer 1-5
-                logger.info("  Golden: option_%d  (WER=%.4f)", golden_option_num, best["score"])
+                logger.info("  Golden: option_%d  (score=%.6f)", golden_option_num, best["score"])
 
                 # Save Whisper transcript to transcripts/<audio_id>.txt
                 transcript_file = transcripts_dir / f"{audio_id}.txt"
                 transcript_file.write_text(raw_hypothesis, encoding="utf-8")
                 logger.info("  Transcript saved -> %s", transcript_file)
 
-                # WER of each option vs the golden candidate text (both normalised)
+                # WER of each option vs the golden candidate text → softmax score
                 golden_text = candidates[golden_option_num - 1]
-                wers = [compute_wer(golden_text, c, norm_lang) for c in candidates]
+                raw_wers = [compute_wer(golden_text, c, norm_lang) for c in candidates]
+                wers = _softmax_wer(raw_wers)
 
         except Exception:
             logger.error("  Error processing %s:\n%s", audio_id, traceback.format_exc())
@@ -510,11 +598,11 @@ def run_pipeline(df: pd.DataFrame, model_name: str = "base",
             "correct_option": correct_option,
             "golden_ref":     golden_option_num,   # NUMBER (1-5), not text
             "is_correct":     is_correct,
-            "wer_option1":    wers[0],
-            "wer_option2":    wers[1],
-            "wer_option3":    wers[2],
-            "wer_option4":    wers[3],
-            "wer_option5":    wers[4],
+            "score_option1":  wers[0],
+            "score_option2":  wers[1],
+            "score_option3":  wers[2],
+            "score_option4":  wers[3],
+            "score_option5":  wers[4],
         })
 
     out_df = pd.DataFrame(output_rows, columns=OUTPUT_COLS)
@@ -582,7 +670,7 @@ def main():
 
     print("\n── Output preview (first 5 rows) ──")
     print(out_df[["audio_id", "language", "correct_option", "golden_ref", "is_correct",
-                  "wer_option1", "wer_option2", "wer_option3", "wer_option4", "wer_option5"]].head(5).to_string(index=False))
+                  "score_option1", "score_option2", "score_option3", "score_option4", "score_option5"]].head(5).to_string(index=False))
 
     # Final accuracy
     scored_mask = out_df["is_correct"].notna()

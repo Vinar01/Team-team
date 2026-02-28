@@ -5,11 +5,11 @@
     "correct_option":1,
     "golden_ref":1,
     "is_correct":true,
-    "wer_option1":0.0,
-    "wer_option2":0.0,
-    "wer_option3":194.3,
-    "wer_option4":0.0,
-    "wer_option5":0.0
+    "score_option1":0.25,
+    "score_option2":0.25,
+    "score_option3":0.0,
+    "score_option4":0.25,
+    "score_option5":0.25
   },
   {
     "audio_id":"2",
@@ -17,11 +17,11 @@
     "correct_option":5,
     "golden_ref":2,
     "is_correct":false,
-    "wer_option1":0.2143,
-    "wer_option2":0.0,
-    "wer_option3":0.0,
-    "wer_option4":207.8929,
-    "wer_option5":0.1786
+    "score_option1":0.221517,
+    "score_option2":0.274458,
+    "score_option3":0.274458,
+    "score_option4":0.0,
+    "score_option5":0.229568
   },
   {
     "audio_id":"3",
@@ -29,11 +29,11 @@
     "correct_option":3,
     "golden_ref":2,
     "is_correct":false,
-    "wer_option1":291.65,
-    "wer_option2":0.0,
-    "wer_option3":0.0,
-    "wer_option4":0.2,
-    "wer_option5":0.0
+    "score_option1":0.0,
+    "score_option2":0.261867,
+    "score_option3":0.261867,
+    "score_option4":0.214399,
+    "score_option5":0.261867
   },
   {
     "audio_id":"4",
@@ -41,11 +41,11 @@
     "correct_option":1,
     "golden_ref":1,
     "is_correct":true,
-    "wer_option1":0.0,
-    "wer_option2":181.875,
-    "wer_option3":0.1562,
-    "wer_option4":0.0,
-    "wer_option5":0.0
+    "score_option1":0.259377,
+    "score_option2":0.0,
+    "score_option3":0.221868,
+    "score_option4":0.259377,
+    "score_option5":0.259377
   },
   {
     "audio_id":"5",
@@ -53,11 +53,11 @@
     "correct_option":4,
     "golden_ref":4,
     "is_correct":true,
-    "wer_option1":0.027,
-    "wer_option2":0.027,
-    "wer_option3":157.1351,
-    "wer_option4":0.0,
-    "wer_option5":0.1892
+    "score_option1":0.257889,
+    "score_option2":0.257889,
+    "score_option3":0.0,
+    "score_option4":0.264947,
+    "score_option5":0.219275
   },
   {
     "audio_id":"6",
@@ -65,11 +65,11 @@
     "correct_option":3,
     "golden_ref":3,
     "is_correct":true,
-    "wer_option1":0.5263,
-    "wer_option2":0.2105,
-    "wer_option3":0.0,
-    "wer_option4":0.2105,
-    "wer_option5":306.7895
+    "score_option1":0.18398,
+    "score_option2":0.252302,
+    "score_option3":0.311415,
+    "score_option4":0.252302,
+    "score_option5":0.0
   },
   {
     "audio_id":"7",
@@ -77,11 +77,11 @@
     "correct_option":5,
     "golden_ref":2,
     "is_correct":false,
-    "wer_option1":0.0286,
-    "wer_option2":0.0,
-    "wer_option3":166.0857,
-    "wer_option4":0.1429,
-    "wer_option5":0.2286
+    "score_option1":0.267399,
+    "score_option2":0.275157,
+    "score_option3":0.0,
+    "score_option4":0.238517,
+    "score_option5":0.218928
   },
   {
     "audio_id":"8",
@@ -89,11 +89,11 @@
     "correct_option":4,
     "golden_ref":1,
     "is_correct":false,
-    "wer_option1":0.0,
-    "wer_option2":224.0,
-    "wer_option3":0.0,
-    "wer_option4":0.0385,
-    "wer_option5":0.2308
+    "score_option1":0.266231,
+    "score_option2":0.0,
+    "score_option3":0.266231,
+    "score_option4":0.256176,
+    "score_option5":0.211361
   },
   {
     "audio_id":"9",
@@ -101,11 +101,11 @@
     "correct_option":2,
     "golden_ref":1,
     "is_correct":false,
-    "wer_option1":0.0,
-    "wer_option2":0.0,
-    "wer_option3":0.2308,
-    "wer_option4":224.0,
-    "wer_option5":0.0
+    "score_option1":0.263581,
+    "score_option2":0.263581,
+    "score_option3":0.209257,
+    "score_option4":0.0,
+    "score_option5":0.263581
   },
   {
     "audio_id":"10",
@@ -113,10 +113,10 @@
     "correct_option":1,
     "golden_ref":1,
     "is_correct":true,
-    "wer_option1":0.0,
-    "wer_option2":253.4348,
-    "wer_option3":0.087,
-    "wer_option4":0.5652,
-    "wer_option5":0.087
+    "score_option1":0.293979,
+    "score_option2":0.0,
+    "score_option3":0.269484,
+    "score_option4":0.167053,
+    "score_option5":0.269484
   }
 ]
