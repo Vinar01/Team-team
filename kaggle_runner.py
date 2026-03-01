@@ -561,7 +561,7 @@ def train_model(matrix: np.ndarray, correct_options: List[int],
     ranker.fit(
         X_flat[:split*5], y_flat[:split*5],
         group=groups[:split],
-        sample_weight=w_flat[:split*5] if w_flat is not None else None,
+        sample_weight=w_flat[::5][:split] if w_flat is not None else None,
         xgb_model=warmstart_path if is_warmstart else None,
     )
 

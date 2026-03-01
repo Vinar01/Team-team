@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Large audio/data files (too big for GitHub)
+fleurs_audio/
+temp_audio/
+transcripts/
+*.zip
+*.tar.gz
+
+# Local outputs (will be re-added after final training run)
+output/
+nono/
+useless/
+
+# Misc
+.DS_Store
+*.xlsx
+image.png
+hi.md
