@@ -173,9 +173,10 @@ def _normalize(text: str, lang: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 def _softmax_wer(wers: List[float]) -> List[float]:
-    finite = [w for w in wers if math.isfinite(w)]
-    cap    = (max(finite) + 10.0) if finite else 10.0
-    clamped = [w if math.isfinite(w) else cap for w in wers]
+    finite  = [w for w in wers if math.isfinite(w)]
+    # Cap WER at 1.0 — anything ≥ 1.0 is already "completely wrong";
+    # avoids extreme values (198, 297) from screenplay options distorting softmax
+    clamped = [min(w, 1.0) if math.isfinite(w) else 1.0 for w in wers]
     neg     = [-w for w in clamped]
     shift   = max(neg)
     exps    = [math.exp(v - shift) for v in neg]
@@ -324,6 +325,34 @@ def run_whisper_stage(df: pd.DataFrame, audio_dir: Path,
             log.error("  Whisper error: %s", e)
 
     return scores, _model
+
+
+def apply_structural_filter(df: pd.DataFrame, final_scores: np.ndarray,
+                            k_len: float = 1.5, k_bracket: float = 0.05) -> np.ndarray:
+    """
+    Post-processing filter applied AFTER XGBoost prediction.
+    Multiplies final scores by structural scores to zero-out screenplay/outlier options.
+    Two signals:
+      len_score     = exp(-k_len * log(len(opt) / median_len)^2)
+                      → penalises options that are 10x+ longer than siblings
+      bracket_score = exp(-k_bracket * count('(', opt))
+                      → penalises screenplay stage directions like (يضحك)
+    Combined: 0.4*len + 0.6*bracket  (bracket weighted higher — stronger signal)
+    """
+    out = final_scores.copy()
+    for i, (_, row) in enumerate(df.iterrows()):
+        opts = [str(row.get(c, "")).strip() for c in OPT_COLS]
+        lens = np.array([max(len(o), 1) for o in opts], dtype=float)
+        median_len = float(np.median(lens)) + 1.0
+        for j, opt in enumerate(opts):
+            log_ratio  = abs(math.log(max(len(opt), 1) / median_len))
+            len_sc     = math.exp(-k_len * log_ratio ** 2)
+            bracket_sc = math.exp(-k_bracket * opt.count('('))
+            out[i, j] *= (0.4 * len_sc + 0.6 * bracket_sc)
+        s = out[i].sum()
+        if s > 0:
+            out[i] /= s
+    return out
 
 
 def run_char_stage(df: pd.DataFrame) -> np.ndarray:
@@ -480,8 +509,18 @@ def score_dataset(df: pd.DataFrame, audio_dir: Path,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def train_model(matrix: np.ndarray, correct_options: List[int],
-                model_path: str) -> "xgb.XGBRanker":
-    """Train XGBRanker on the score matrix and save to model_path."""
+                model_path: str,
+                sample_weights: Optional[List[float]] = None,
+                warmstart_path: Optional[str] = None) -> "xgb.XGBRanker":
+    """
+    Train XGBRanker on the score matrix and save to model_path.
+
+    Args:
+        sample_weights: per-row weights (len == N). Higher = more influence.
+                        e.g. synthetic=3, labeled_arabic=5, test_rows=10
+        warmstart_path: path to existing XGBoost model to fine-tune from.
+                        Preserves prior knowledge while adapting to new data.
+    """
     if not _XGB:
         raise RuntimeError("xgboost not installed. pip install xgboost")
 
@@ -496,16 +535,35 @@ def train_model(matrix: np.ndarray, correct_options: List[int],
             except Exception: pass
         groups.append(5)
 
+    # Expand row-level weights to per-option weights
+    if sample_weights is not None:
+        w_flat = np.repeat(np.array(sample_weights, dtype=np.float32), 5)
+    else:
+        w_flat = None
+
     split = max(1, int(N * 0.8))
-    log.info("XGBoost training: %d rows (80%% train / 20%% val)...", N)
+    is_warmstart = warmstart_path and os.path.exists(warmstart_path)
+    log.info("XGBoost %straining: %d rows (80%% train / 20%% val)%s...",
+             "warm-start " if is_warmstart else "",
+             N,
+             f" — loading base model from {warmstart_path}" if is_warmstart else "")
+
+    # Use lower LR and fewer trees when fine-tuning (warm-start)
+    n_est = 200 if is_warmstart else 300
+    lr    = 0.03 if is_warmstart else 0.05
 
     ranker = xgb.XGBRanker(
-        objective="rank:pairwise", n_estimators=300,
-        max_depth=4, learning_rate=0.05,
+        objective="rank:pairwise", n_estimators=n_est,
+        max_depth=4, learning_rate=lr,
         subsample=0.8, colsample_bytree=0.8,
         eval_metric="ndcg", random_state=42, verbosity=0,
     )
-    ranker.fit(X_flat[:split*5], y_flat[:split*5], group=groups[:split])
+    ranker.fit(
+        X_flat[:split*5], y_flat[:split*5],
+        group=groups[:split],
+        sample_weight=w_flat[:split*5] if w_flat is not None else None,
+        xgb_model=warmstart_path if is_warmstart else None,
+    )
 
     # Validation accuracy on held-out 20%
     raw_val   = ranker.predict(X_flat[split*5:]).reshape(N - split, 5)
@@ -608,6 +666,10 @@ def main():
     p.add_argument("--full",          action="store_true",
                    help="Also run SeamlessM4T + E5 + mT5 scoring")
     p.add_argument("--model-path",    default="/kaggle/working/fusion_model.json")
+    p.add_argument("--warmstart-model", default=None,
+                   help="Path to existing XGBoost model to fine-tune from (preserves prior knowledge)")
+    p.add_argument("--structural-filter", action="store_true",
+                   help="Post-processing: multiply scores by structural scores to kill screenplay/outlier options")
     p.add_argument("--limit",         type=int, default=None,
                    help="Limit rows per dataset (for quick testing)")
     args = p.parse_args()
@@ -649,7 +711,16 @@ def main():
             args.whisper_model, args.full)
 
         if _XGB:
-            ranker = train_model(train_matrix, correct_options, args.model_path)
+            # Read per-row sample weights if column present
+            sample_weights = None
+            if 'sample_weight' in train_df.columns:
+                sample_weights = train_df['sample_weight'].fillna(1.0).tolist()
+                log.info("Sample weights: min=%.1f  max=%.1f  mean=%.1f",
+                         min(sample_weights), max(sample_weights),
+                         sum(sample_weights)/len(sample_weights))
+            ranker = train_model(train_matrix, correct_options, args.model_path,
+                                 sample_weights=sample_weights,
+                                 warmstart_path=args.warmstart_model)
         else:
             log.warning("xgboost not available — model not trained, will use equal weights.")
 
@@ -686,6 +757,11 @@ def main():
             whisper_instance=whisper_instance)
 
         final_scores = predict(test_matrix, ranker=ranker, model_path=args.model_path)
+
+        if args.structural_filter:
+            log.info("Applying structural filter (kills screenplay/length-outlier options)...")
+            final_scores = apply_structural_filter(test_df, final_scores)
+
         out_df       = build_output(test_df, final_scores, test_labels)
 
         out_path = Path(args.output)
