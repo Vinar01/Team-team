@@ -239,9 +239,13 @@ def _find_audio(audio_id: str, audio_col: str,
                 return str(p)
 
     if audio_col.startswith("http"):
-        audio_dir.mkdir(parents=True, exist_ok=True)
+        # Downloads must go to a writable dir — audio_dir may be read-only in Kaggle
+        # (/kaggle/input/ is always read-only; /kaggle/working/ is writable)
+        _kaggle_cache = Path("/kaggle/working/audio_cache")
+        dl_dir = _kaggle_cache if Path("/kaggle/working").exists() else audio_dir
+        dl_dir.mkdir(parents=True, exist_ok=True)
         ext  = Path(audio_col.split("?")[0]).suffix or ".wav"
-        dest = audio_dir / f"{audio_id}{ext}"
+        dest = dl_dir / f"{audio_id}{ext}"
         if dest.exists(): return str(dest)
         try:
             log.info("  Downloading audio %s ...", audio_id)
