@@ -1,4 +1,4 @@
-# Arabic Transcription Quality Assessment — HAckenza 2026
+# Golden Transcription — Hackenza 2026
 
 A multi-signal machine learning pipeline that identifies the **best transcription** of an Arabic audio clip from 5 candidate options, using acoustic, character-level, semantic, and linguistic scoring fused via gradient-boosted ranking.
 
@@ -6,7 +6,7 @@ A multi-signal machine learning pipeline that identifies the **best transcriptio
 
 ## Problem Statement
 
-Given an Arabic audio clip and 5 transcription candidates (option 1–5), the system must predict which option is the most accurate transcription. The pipeline is evaluated on 100 rows of Arabic (Arabic_SA dialect), of which 50 have ground-truth labels and 50 are held-out test rows.
+Given an  audio clip and 5 transcription candidates (option 1–5), the system must predict which option is the most accurate transcription. 
 
 ---
 
